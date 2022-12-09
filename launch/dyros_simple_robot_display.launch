@@ -1,0 +1,5 @@
+<launch>
+    <node name="dyros_practice" pkg="dyros_practice_1" type="dyros_practice" output="screen" required="true" launch-prefix="gdb -ex run --args" >
+    	<rosparam command="load" file="$(find tocabi_cc)/config/MPCgain.yaml"/>
+    </node>
+</launch>
