@@ -5,9 +5,6 @@ project(dyros_practice_1)
 add_compile_options(-std=c++14)
 add_compile_options(-O2)
 
-set(Torch_DIR "/home/jhk/libtorch/share/cmake/Torch/")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   roslib
@@ -16,8 +13,6 @@ find_package(catkin REQUIRED COMPONENTS
   eigen_conversions
 )
 find_package(Boost REQUIRED COMPONENTS system)
-
-find_package(Torch REQUIRED PATH /usr/local/include/libtorch/share/cmake/Torch/)
 
 catkin_package(
 #  INCLUDE_DIRS include
@@ -42,5 +37,4 @@ target_link_libraries(dyros_practice
   ${catkin_LIBRARIES}
  -lcrocoddyl
  -lpinocchio
- ${TORCH_LIBRARIES}
 )

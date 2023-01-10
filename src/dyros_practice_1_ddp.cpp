@@ -64,10 +64,9 @@
 #include "crocoddyl/core/solvers/box-ddp.hpp"
 #include "crocoddyl/core/utils/math.hpp"
 #include "pinocchio/parsers/urdf.hpp"
-#include <sys/types.h>
-#include <sys/ipc.h>
-#include <sys/shm.h>
+
 #include <string.h>
+#include <torch/torch.h>
 
 #define MODEL_DOF 33
 #define ENDEFFECTOR_NUMBER 4
@@ -82,92 +81,6 @@
 #define INERITA_SIZE 198
 #define STDDEV(vec) std::sqrt(((vec - vec.mean())).square().sum() / (static_cast<double>(vec.size()) - 1))
 #define AVG(vec) (vec.mean())
-
-class CSharedMemroy
-{
-   public :
-      int m_shmid; 
-      int m_shmid1;   
-      key_t m_key;
-      void setShmId(int key);
-      int getShmId();
-      void setKey(key_t key);
-   
-      void setupSharedMemory(int size);
-      void setupSharedMemory1(int size);
-      void setupSharedMemory2(int size);
-      void setupSharedMemory3(int size);
-      void attachSharedMemory();
-      void attachSharedMemory1();
-      void close();
-
-      double *m_shared_memory;
-      int *m_shared_memory_int;
-      double *m_shared_memory_read;
-};
- 
-void CSharedMemroy::setShmId( int id )
-{
-    m_shmid = id;
-}
-
-void CSharedMemroy::setKey( key_t key )
-{
-    m_key = key;
-}
- 
-void CSharedMemroy::setupSharedMemory(int size)
-{
-   if ((m_shmid = shmget(m_key, sizeof(double)*1350 , 0666|IPC_CREAT)) < 0)
-   {
-      printf("Error getting shared memory id");
-      exit( 1 );
-   }
-}
-
-void CSharedMemroy::setupSharedMemory1(int size)
-{
-   if ((m_shmid = shmget(m_key, sizeof(int)*4 , 0666|IPC_CREAT)) < 0)
-   {
-      printf("Error getting shared memory id");
-      exit( 1 );
-   }
-}
-
-void CSharedMemroy::setupSharedMemory2(int size)
-{
-   if ((m_shmid = shmget(m_key, sizeof(double)*45 , 0666|IPC_CREAT)) < 0)
-   {
-      printf("Error getting shared memory id");
-      exit( 1 );
-   }
-}
-
-void CSharedMemroy::setupSharedMemory3(int size)
-{
-   if ((m_shmid = shmget(m_key, sizeof(double)*19 , 0666|IPC_CREAT)) < 0)
-   {
-      printf("Error getting shared memory id");
-      exit( 1 );
-   }
-}
-
-void CSharedMemroy::attachSharedMemory()
-{
-   m_shared_memory = (double*)shmat(m_shmid, NULL, 0);
-}
-
-void CSharedMemroy::attachSharedMemory1()
-{
-   m_shared_memory_int = (int*)shmat(m_shmid, NULL, 0);
-}
-
-void CSharedMemroy::close()
-{
-   sleep(1);
-   shmctl(m_shmid,IPC_RMID,NULL);
-}
-
 namespace Eigen
 {
   typedef double rScalar;
@@ -193,6 +106,8 @@ std::vector<boost::shared_ptr<crocoddyl::CostModelSum>> runningCostModel_vector;
 std::vector<boost::shared_ptr<crocoddyl::DifferentialActionModelKinoDynamics>> runningDAM_vector;
 std::vector<boost::shared_ptr<crocoddyl::ActionModelAbstract>> runningModelWithRK4_vector;
 std::vector<boost::shared_ptr<crocoddyl::ActionDataAbstract>> runningModelWithRK4_data;
+// std::vector<boost::shared_ptr<ResidualKinoFrameTranslation>> residual_FrameRF;
+// std::vector<boost::shared_ptr<ResidualKinoFrameTranslation>> residual_FrameLF;
 std::vector<boost::shared_ptr<crocoddyl::ResidualKinoFramePlacement>> residual_FrameRF;
 std::vector<boost::shared_ptr<crocoddyl::ResidualKinoFramePlacement>> residual_FrameLF;
 std::vector<boost::shared_ptr<crocoddyl::CostModelAbstract>> xRegCost_vector;
@@ -202,6 +117,8 @@ std::vector<boost::shared_ptr<crocoddyl::CostModelAbstract>> camBoundCost_vector
 std::vector<boost::shared_ptr<crocoddyl::CostModelAbstract>> comBoundCost_vector;
 std::vector<boost::shared_ptr<crocoddyl::CostModelAbstract>> foot_trackR;
 std::vector<boost::shared_ptr<crocoddyl::CostModelAbstract>> foot_trackL;
+// std::vector<Eigen::VectorXd> rf_foot_pos_vector;
+// std::vector<Eigen::VectorXd> lf_foot_pos_vector;
 std::vector<pinocchio::SE3> rf_foot_pos_vector;
 std::vector<pinocchio::SE3> lf_foot_pos_vector;
 
@@ -241,116 +158,16 @@ unsigned int MAXITER = 100;
 
 int css_count = 0;
 
+
 const std::string FILE_NAMES[2] =
         {
+            ///change this directory when you use this code on the other computer///
             "/home/jhk/data/mpc/5_tocabi_.txt",
             "/home/jhk/data/mpc/6_tocabi_.txt",
         };
 
 int main(int argc, char **argv)
 {
-  N = 30; // number of nodes
-  T = 1;  // number of trials
-  MAXITER = 1;
-
-  CSharedMemroy m, m1, m2, m3, m4, m5, m6;
-  m.setKey(100);
-  m1.setKey(101);
-  m2.setKey(102);
-  m3.setKey(103);
-  m4.setKey(104);
-  m5.setKey(105);
-  m6.setKey(104);
-  m.setupSharedMemory(1); 
-  m.attachSharedMemory();
-  m1.setupSharedMemory(1); 
-  m1.attachSharedMemory();
-  m2.setupSharedMemory1(1);
-  m2.attachSharedMemory1();
-  m3.setupSharedMemory1(1);
-  m3.attachSharedMemory1();
-  m4.setupSharedMemory1(1);
-  m4.attachSharedMemory1();
-  m5.setupSharedMemory2(1);
-  m5.attachSharedMemory1();
-  m6.setupSharedMemory1(1);
-  m6.attachSharedMemory1();
-  
-  ros::init(argc, argv, "talker");
-  ros::NodeHandle n;
-
-  double *arr;
-  double *arr1;
-  double *arr3;
-  int *arr2;
-
-  int shmid = shmget(m.m_key,sizeof(double)*1350,0666|IPC_EXCL);
-  int shmid1 = shmget(m1.m_key,sizeof(double)*1350,0666|IPC_EXCL);
-  int shmid2 = shmget(m4.m_key,sizeof(int)*4,0666|IPC_EXCL);
-  int shmid3 = shmget(m5.m_key,sizeof(int)*45,0666|IPC_EXCL);
-
-  arr = (double *)shmat(shmid, NULL, 0);
-  arr1 = (double *)shmat(shmid1, NULL, 0);
-  arr2 = (int *)shmat(shmid2, NULL, 0);
-  arr3 = (double *)shmat(shmid3, NULL, 0);
-  arr2[0] = 0;
-
-  int i;
-	for(i=0; i<5; i++) 
-        printf("%9.9f\n", arr[i] );
-    
-  for(i=0; i<5; i++) 
-        printf("%9.9f\n", arr[i]);
-  
-  sleep(5);
-  std::cout << "bb" << std::endl;
-  m2.m_shared_memory_int[0] = 1;
-
-  while(ros::ok())
-  {
-    //std::cout << arr2[0] << std::endl;
-    std::cout << "no " << std::endl;
-    if(arr2[0] == 1)
-    {
-      std::cout << "init " << std::endl;
-      m6.m_shared_memory_int[0] = 0;
-      std::cout << arr3[0] << "  " << arr3[1] << "  " << arr3[2] << std::endl;
-      m2.m_shared_memory_int[0] = 1;
-    }
-    sleep(2);
-  }
-  m.close();
-  m1.close();
-  m2.close();
-  m4.close();
-  
-  std::vector<Eigen::VectorXd> xhat;
-  std::vector<Eigen::VectorXd> uhat;
-
-  int x_count = 0;
-  for (int i=0; i<N; ++i)
-  {
-      Eigen::VectorXd arrtemp;
-      arrtemp.resize(45);
-      Eigen::VectorXd arrtemp1;
-      arrtemp1.resize(22);
-      memcpy(&arrtemp[0], &arr[0 + x_count * 45], 45*sizeof(double));
-      memcpy(&arrtemp1[0], &arr1[0 + x_count * 22], 22*sizeof(double));
-
-      xhat.push_back(arrtemp);
-      uhat.push_back(arrtemp1);
-      x_count++;
-  }
-  std::cout.precision(4);
-  for(int i = 0; i < N; i++)
-  {
-    for(int j = 0; j < 45; j++)
-    {
-      std::cout << xhat[i][j] <<" ";
-    }
-    std::cout << "" << std::endl;
-  }
-  
   std::fstream file[2];
   for (int i = 0; i < 2; i++)
   {
@@ -480,6 +297,7 @@ int main(int argc, char **argv)
         LFz.push_back(atof(string_test.c_str()));
       }
       a = a + 1;
+     // std::cout << "a : " << a <<" " << walkingtick.size() <<std::endl;
       if (a == 234)
       {
         break;
@@ -584,6 +402,10 @@ int main(int argc, char **argv)
   qdot_1 = Eigen::VectorXd::Zero(model1.nv);
   qddot_1 = Eigen::VectorXd::Zero(model1.nv);
 
+  N = 30; // number of nodes
+  T = 1;  // number of trials
+  MAXITER = 300;
+
   // DifferentialActionDataKinoDynamicss
   pinocchio::Model model3;
   pinocchio::urdf::buildModel("/home/jhk/catkin_ws/src/tocabi_cc/robots/dyros_tocabi_with_redhands.urdf",
@@ -591,31 +413,41 @@ int main(int argc, char **argv)
   pinocchio::Data data3(model3);
   Eigen::VectorXd q_3;
   q_3 = randomConfiguration(model3);
-
-
-  for(int i = 0; i < 19; i++)
-    q_3(i) = uhat[N-1][i];
-
+  q_3 << 0, 0, 0.80783, 0, 0, 0, 1, 0.0, 0.0, -0.55, 1.26, -0.71, 0.0, 0.0, 0.0, -0.55, 1.26, -0.71, 0.0;
   pinocchio::forwardKinematics(model3, data3, q_3);
   pinocchio::centerOfMass(model3, data3, q_3, false);
   pinocchio::updateFramePlacements(model3, data3);
   model3.lowerPositionLimit.head<7>().array() = -1;
   model3.upperPositionLimit.head<7>().array() = 1.;
-
+  std::cout << "Rf " << std::endl;
+  /// std::cout << data3.oMi[RFjoint_id].translation << std::endl;
   const pinocchio::SE3 rf_foot_pos0 = data3.oMf[RFframe_id];
   Eigen::Vector3d rf_foot_pos = rf_foot_pos0.translation();
   const pinocchio::SE3 lf_foot_pos0 = data3.oMf[LFframe_id];
   Eigen::Vector3d lf_foot_pos = lf_foot_pos0.translation();
 
   std::cout << rf_foot_pos0.translation() << std::endl;
+  // const pinocchio::SE3::Vector3& lf_foot_pos0 = data3.oMi[LFjoint_id].translation;
 
   const std::string RF = "R_AnkleRoll_Joint";
   const std::string LF = "L_AnkleRoll_Joint";
-  
+
   state =
       boost::make_shared<crocoddyl::StateKinodynamic>(boost::make_shared<pinocchio::Model>(model3));
   actuation =
       boost::make_shared<crocoddyl::ActuationModelKinoBase>(state);
+
+  traj_.resize(45);
+  traj_.setZero();
+  traj_.head(19) << 0, 0, 0.80783, 0, 0, 0, 1, 0.0, 0.0, -0.55, 1.26, -0.71, 0.0, 0.0, 0.0, -0.55, 1.26, -0.71, 0.0;
+  traj_(37) = 0.08;
+  traj_(38) = 0.0;
+  traj_(39) = 0.0;
+  traj_(40) = 0.00;
+
+  u_traj_.resize(22);
+  u_traj_.setZero();
+  u_traj_(18) = 1.0;
 
   lb_.resize(2, N);
   lb_.setOnes();
@@ -725,10 +557,10 @@ int main(int argc, char **argv)
     state_activations2.push_back(boost::make_shared<crocoddyl::ActivationModelQuadraticBarrier>(state_bounds2[i]));
     state_activations3.push_back(boost::make_shared<crocoddyl::ActivationModelQuadraticBarrier>(state_bounds3[i]));
     actuation_vector.push_back(boost::make_shared<crocoddyl::ActuationModelKinoBase>(state_vector[i]));
-   // xRegCost_vector.push_back(boost::make_shared<crocoddyl::CostModelResidual>(
-    //    state, boost::make_shared<crocoddyl::ActivationModelWeightedQuad>(weight_quad), boost::make_shared<crocoddyl::ResidualModelState>(state_vector[i], traj_, actuation_vector[i]->get_nu() + 4)));
-   // uRegCost_vector.push_back(boost::make_shared<crocoddyl::CostModelResidual>(
-   //     state, boost::make_shared<crocoddyl::ActivationModelWeightedQuad>(weight_quad_u), boost::make_shared<crocoddyl::ResidualModelControl>(state_vector[i], u_traj_))); //, actuation_vector[i]->get_nu() + 1)));
+    xRegCost_vector.push_back(boost::make_shared<crocoddyl::CostModelResidual>(
+        state, boost::make_shared<crocoddyl::ActivationModelWeightedQuad>(weight_quad), boost::make_shared<crocoddyl::ResidualModelState>(state_vector[i], traj_, actuation_vector[i]->get_nu() + 4)));
+    uRegCost_vector.push_back(boost::make_shared<crocoddyl::CostModelResidual>(
+        state, boost::make_shared<crocoddyl::ActivationModelWeightedQuad>(weight_quad_u), boost::make_shared<crocoddyl::ResidualModelControl>(state_vector[i], u_traj_))); //, actuation_vector[i]->get_nu() + 1)));
 
     stateBoundCost_vector.push_back(boost::make_shared<crocoddyl::CostModelResidual>(
         state_vector[i], state_activations[i], boost::make_shared<crocoddyl::ResidualFlyState>(state_vector[i], actuation_vector[i]->get_nu() + 4)));
@@ -741,6 +573,10 @@ int main(int argc, char **argv)
     pinocchio::SE3 lf_foot_temp(Eigen::Matrix3d::Identity(), lf_foot_pos);
     rf_foot_pos_vector.push_back(rf_foot_temp);
     lf_foot_pos_vector.push_back(lf_foot_temp);
+    //  rf_foot_pos_vector.push_back(rf_foot_pos);
+    //  lf_foot_pos_vector.push_back(lf_foot_pos);
+    //    residual_FrameRF.push_back(boost::make_shared<ResidualKinoFrameTranslation>(state_vector[i], RFframe_id, rf_foot_pos_vector[i], actuation_vector[i]->get_nu() + 4));
+    //    residual_FrameLF.push_back(boost::make_shared<ResidualKinoFrameTranslation>(state_vector[i], LFframe_id, lf_foot_pos_vector[i], actuation_vector[i]->get_nu() + 4));
     residual_FrameRF.push_back(boost::make_shared<crocoddyl::ResidualKinoFramePlacement>(state_vector[i], RFframe_id, rf_foot_pos_vector[i], actuation_vector[i]->get_nu() + 4));
     residual_FrameLF.push_back(boost::make_shared<crocoddyl::ResidualKinoFramePlacement>(state_vector[i], LFframe_id, lf_foot_pos_vector[i], actuation_vector[i]->get_nu() + 4));
     foot_trackR.push_back(boost::make_shared<crocoddyl::CostModelResidual>(state_vector[i], boost::make_shared<crocoddyl::ActivationModelWeightedQuad>(weight_quad_rf), residual_FrameRF[i]));
@@ -789,17 +625,17 @@ int main(int argc, char **argv)
     runningDAM_vector.push_back(boost::make_shared<crocoddyl::DifferentialActionModelKinoDynamics>(state_vector[i], actuation_vector[i],
                                                                                                runningCostModel_vector[i]));
     runningModelWithRK4_vector.push_back(boost::make_shared<crocoddyl::IntegratedActionModelEuler>(runningDAM_vector[i], dt_));
-  }
 
+    // runningModelWithRK4_vector.push_back(boost::make_shared<crocoddyl::IntegratedActionModelRK>(runningDAM_vector[i], crocoddyl::RKType::two, dt_));
+  }
+  //std::cout << "Aaa" <<std::endl;
   x0.resize(state->get_nx() + 8);
   u0.resize(actuation->get_nu() + 4);
   u0.setZero();
   x0.setZero();
-  x0.segment<19>(0) = q_3;
+  x0.segment<19>(0) << 0, 0, 0.80783, 0, 0, 0, 1, 0.0, 0.0, -0.55, 1.26, -0.71, 0.0, 0.0, 0.0, -0.55, 1.26, -0.71, 0.0;
   x0.tail(8)(0) = data3.com[0](0);
   x0.tail(8)(2) = data3.com[0](0);
-  x0.tail(8)(4) = data3.com[0](1);
-  x0.tail(8)(6) = data3.com[0](1);
   terminalModel =
       boost::make_shared<crocoddyl::IntegratedActionModelEuler>(terminalDAM, dt_);
   problemWithRK4 =
@@ -808,10 +644,13 @@ int main(int argc, char **argv)
   for (int i = 0; i < N - 1; i++)
   {
     runningModelWithRK4_data.push_back(runningModelWithRK4_vector[i]->createData());
+    //runningDAM_vector[i]->createData();
   }
 
-  problemWithRK4->set_nthreads(1);
+  problemWithRK4->set_nthreads(6);
   std::cout << "thread " << problemWithRK4->get_nthreads() << std::endl; // " " << problemWithRK4->enableMultithreading()<< std::endl;
+
+  crocoddyl::SolverBoxFDDP ddp(problemWithRK4);
 
   for (int i = 0; i < N; i++)
   {
@@ -819,17 +658,99 @@ int main(int argc, char **argv)
     if (i != N - 1)
       us.push_back(u0);
   }
+  bool CALLBACKS = false;
 
+  if (CALLBACKS)
+  {
+    cbs.push_back(boost::make_shared<crocoddyl::CallbackVerbose>());
+    ddp.setCallbacks(cbs);
+  }
 
   int css;
   T = 1;
   Eigen::ArrayXd duration(T);
+  for (unsigned int i = 0; i < T; ++i)
+  {
+    crocoddyl::Timer timer;    
+    css = ddp.solve(xs, us, MAXITER);
+    duration[i] = timer.get_duration();
+    std::cout << "aftersolve" << std::endl;
+    std::cout << "sss " << ddp.get_iter() << "  " << css << std::endl;
 
-  int walking_ti = 23;
+    xs = ddp.get_xs();
+    us = ddp.get_us();
+
+    std::cout << "css " << ddp.get_iter() << " " << ddp.get_is_feasible() << std::endl;
+
+    double avrg_duration = duration[i];
+    double min_duration = duration.minCoeff();
+    double max_duration = duration.maxCoeff();
+
+    std::cout << "  DDP.solve [ms]: " << avrg_duration << " (" << min_duration << "-" << max_duration << ")"
+              << std::endl;
+    
+    for (int i = 0; i < N - 1; i++)
+    {
+      std::cout << "q " << i << std::endl;
+      for (int j = 0; j < 19; j++)
+      {
+        std::cout << xs[i][j] << ", ";
+      }
+      std::cout << "qdot " << i << std::endl;
+      {
+        for (int j = 19; j < 37; j++)
+        {
+          std::cout << xs[i][j] << ", ";
+        }
+      }
+      std::cout << "x_state " << i << std::endl;
+      {
+        for (int j = 37; j < 45; j++)
+        {
+          std::cout << xs[i][j] << ", ";
+        }
+      }
+      std::cout << std::endl;
+      std::cout << "u " << i << std::endl;
+      for (int j = 0; j < actuation->get_nu(); j++)
+      {
+        std::cout << us[i][j] << ", ";
+      }
+      std::cout << "ustate" << std::endl;
+      for (int j = actuation->get_nu(); j < actuation->get_nu() + 4; j++)
+      {
+        std::cout << us[i][j] << ", ";
+      }
+      std::cout << std::endl;
+    }
+
+    std::cout << "q " << N - 1 << std::endl;
+    for (int j = 0; j < 19; j++)
+    {
+      std::cout << xs[N - 1][j] << ", ";
+    }
+    std::cout << "qdot " << N - 1 << std::endl;
+    {
+      for (int j = 19; j < 37; j++)
+      {
+        std::cout << xs[N - 1][j] << ", ";
+      }
+    }
+    std::cout << "x_state " << N - 1 << std::endl;
+    {
+      for (int j = 37; j < 45; j++)
+      {
+        std::cout << xs[N - 1][j] << ", ";
+      }
+    }
+  }
+
+  int walking_ti = 0;
+  std::cout << weight_quad_zmp << std::endl;
   css = 1;
-  
-  //while (ros::ok())
-  //{
+
+  while (ros::ok())
+  {
     int N_temp = 1;
     for (int i = 0; i < N; i++)
     {
@@ -847,31 +768,23 @@ int main(int argc, char **argv)
       file[0] << walking_ti << " " << i << " lb " << state_bounds[i].lb(0) << "ub " << state_bounds[i].ub(0) << " "
               << " lb " << state_bounds[i].lb(1) << "ub " << state_bounds[i].ub(1) << " " << residual_FrameRF[i]->get_reference().translation().transpose() << " " << residual_FrameLF[i]->get_reference().translation().transpose() << std::endl;
     }
-    
-    problemWithRK4->set_x0(x0);
-    crocoddyl::SolverBoxFDDP ddp(problemWithRK4);
 
     bool CALLBACKS = false;
-
     if (CALLBACKS)
     {
-      cbs.push_back(boost::make_shared<crocoddyl::CallbackVerbose>());
       ddp.setCallbacks(cbs);
     }
+    
+    problemWithRK4->set_x0(xs[1]);
+    crocoddyl::SolverBoxFDDP ddp(problemWithRK4);
 
+    T = 1;
+    Eigen::ArrayXd duration(T);
+    MAXITER = 300;
     for (unsigned int i = 0; i < T; ++i)
     {
-      for(int i =0; i < N; i++)
-      {
-        xs[i] = xhat[i];
-      }
-      
-      for(int i = 0; i < N-1; i++)
-      {
-        us[i] = uhat[i];
-      }
       crocoddyl::Timer timer;
-      css = ddp.solve(xs, us, MAXITER, false, 1.0);
+      css = ddp.solve(xs, us, MAXITER);
       duration[i] = timer.get_duration();
       std::cout << "aftersolve1" << std::endl;
       std::cout << "iter :  " << ddp.get_iter() << "  " << css << std::endl;
@@ -880,7 +793,7 @@ int main(int argc, char **argv)
       {
         xs = xs_save;
         us = us_save;
-        //problemWithRK4->set_x0(xs[1]);
+        problemWithRK4->set_x0(xs[1]);
       }
       else
       {
@@ -916,8 +829,6 @@ int main(int argc, char **argv)
     {
       css_count = css_count + 1;
     }
-
-    
     std::cout << "walking_tick " << walking_ti << " css_count : " << css_count << std::endl;
     file[1] << "walking_tick " << walking_ti << " css " << ddp.get_iter() << " " << css << " " << ddp.get_is_feasible() << std::endl;
     for (int i = 0; i < N - 1; i++)
@@ -977,5 +888,11 @@ int main(int argc, char **argv)
     file[1] << std::endl;
     walking_ti = walking_ti + 1;
     std::cout << "ddp residual"<< std::endl;
-  //}*/
+
+    if(walking_ti == 15)
+    {
+      break;
+    }
+  }
 }
+
